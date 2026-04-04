@@ -1,0 +1,15 @@
+__pycache__/
+*.pyc
+*.pyo
+*.pth
+*.pt
+*.egg-info/
+dist/
+build/
+.cache/
+.env
+wandb/
+*.log
+results/*.json
+results/*.png
+!results/.gitkeep
