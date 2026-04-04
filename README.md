@@ -15,30 +15,44 @@ Baselines implemented: **Tent** (entropy minimisation on LayerNorm params).
 
 ## Setup
 
+This project uses [uv](https://docs.astral.sh/uv/) for dependency management
+and [ruff](https://docs.astral.sh/ruff/) for linting/formatting.
+
 ```bash
-# 1. Clone
+# 1. Install uv (if not already installed)
+curl -LsSf https://astral.sh/uv/install.sh | sh
+
+# 2. Clone
 git clone https://github.com/AanshSamyani/TLM_ASR_1.git
 cd TLM_ASR_1
 
-# 2. Create a virtual environment (recommended)
-python -m venv venv
-source venv/bin/activate        # Linux/Mac
-# venv\Scripts\activate         # Windows
-
-# 3. Install dependencies
-pip install -r requirements.txt
+# 3. Install dependencies (creates a .venv automatically)
+uv sync
 ```
 
 > **Note:** The first run downloads the Whisper model (~1 GB for `whisper-small`)
 > and datasets (~5 GB for LibriSpeech test sets, ~1 GB for TEDLIUM).  
 > On a cluster set `HF_HOME=/path/to/large/disk` to control cache location.
 
+## Linting & formatting
+
+```bash
+# Check for lint issues
+uv run ruff check .
+
+# Auto-fix lint issues
+uv run ruff check --fix .
+
+# Format code
+uv run ruff format .
+```
+
 ## Experiments
 
 ### Quick smoke test (< 10 min on 1 GPU)
 
 ```bash
-python run_experiment.py \
+uv run python run_experiment.py \
     --method ttl \
     --adapt_dataset librispeech_other \
     --eval_dataset librispeech_other \
@@ -81,7 +95,7 @@ bash scripts/run_all.sh
 After experiments finish, generate comparison plots:
 
 ```bash
-python analysis/plot_results.py --input_dir results --output_dir results
+uv run python analysis/plot_results.py --input_dir results --output_dir results
 ```
 
 This produces:
@@ -97,7 +111,7 @@ A summary table is printed to stdout as well.
 ## CLI reference
 
 ```
-python run_experiment.py --help
+uv run python run_experiment.py --help
 ```
 
 Key flags:
@@ -128,6 +142,7 @@ Key flags:
 ## Project structure
 
 ```
+├── pyproject.toml             # project metadata, deps, ruff config
 ├── run_experiment.py          # single entry point
 ├── src/
 │   ├── models.py              # Whisper + LoRA loading

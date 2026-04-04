@@ -17,7 +17,7 @@ echo "  Sample-selection ablation on $DATASET"
 echo "========================================"
 
 # --- no selection (all samples, weight=1) ---
-python run_experiment.py \
+uv run python run_experiment.py \
     --method ttl \
     --model "$MODEL" \
     --adapt_dataset "$DATASET" \
@@ -30,7 +30,7 @@ python run_experiment.py \
 # e^2 ≈ 7.39,  e^3 ≈ 20.09,  e^4 ≈ 54.60,  e^5 ≈ 148.41
 for P0 in 7.39 20.09 54.60 148.41; do
     echo "--- P0 = $P0 ---"
-    python run_experiment.py \
+    uv run python run_experiment.py \
         --method ttl \
         --model "$MODEL" \
         --adapt_dataset "$DATASET" \

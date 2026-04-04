@@ -17,6 +17,6 @@ bash "$SCRIPT_DIR/exp3_sample_selection.sh"
 
 echo ""
 echo "===== All experiments done. Generating plots… ====="
-python analysis/plot_results.py --input_dir results --output_dir results
+uv run python analysis/plot_results.py --input_dir results --output_dir results
 
 echo "Done!  Check results/ for JSON files and PNG plots."

@@ -16,14 +16,14 @@ for DATASET in librispeech_other tedlium; do
     echo "========================================"
 
     # --- baseline ---
-    python run_experiment.py \
+    uv run python run_experiment.py \
         --method base \
         --model "$MODEL" \
         --eval_dataset "$DATASET" \
         --tag exp2
 
     # --- Tent (entropy minimisation, LayerNorm params) ---
-    python run_experiment.py \
+    uv run python run_experiment.py \
         --method tent \
         --model "$MODEL" \
         --adapt_dataset "$DATASET" \
@@ -32,7 +32,7 @@ for DATASET in librispeech_other tedlium; do
         --tag exp2
 
     # --- TTL (CE on pseudo-labels, LoRA, sample selection) ---
-    python run_experiment.py \
+    uv run python run_experiment.py \
         --method ttl \
         --model "$MODEL" \
         --adapt_dataset "$DATASET" \

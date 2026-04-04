@@ -17,14 +17,14 @@ for DATASET in librispeech_clean librispeech_other tedlium; do
     echo "========================================"
 
     # --- baseline (no adaptation) ---
-    python run_experiment.py \
+    uv run python run_experiment.py \
         --method base \
         --model "$MODEL" \
         --eval_dataset "$DATASET" \
         --tag exp1
 
     # --- TTL (no sample selection) ---
-    python run_experiment.py \
+    uv run python run_experiment.py \
         --method ttl \
         --model "$MODEL" \
         --adapt_dataset "$DATASET" \
@@ -34,7 +34,7 @@ for DATASET in librispeech_clean librispeech_other tedlium; do
         --tag exp1
 
     # --- TTL (with sample selection, P0 = e^3) ---
-    python run_experiment.py \
+    uv run python run_experiment.py \
         --method ttl \
         --model "$MODEL" \
         --adapt_dataset "$DATASET" \
