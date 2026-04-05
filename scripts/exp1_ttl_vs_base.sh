@@ -5,15 +5,21 @@
 # Compares Whisper-small with and without TTL adaptation on
 # three test sets of increasing domain shift.
 #
-# Quick run:   add  --max_samples 100  to each command
-# Full run:    remove --max_samples entirely
+# Usage:  bash scripts/exp1_ttl_vs_base.sh --gpu 0 --batch_size 32
 # =============================================================
 set -euo pipefail
 MODEL="openai/whisper-small"
-GPU_FLAG=()
-if [[ "${1:-}" == "--gpu" && -n "${2:-}" ]]; then
-    GPU_FLAG=(--gpu "$2")
-fi
+
+# Parse optional flags and forward them to run_experiment.py
+EXTRA_FLAGS=()
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --gpu|--batch_size)
+            EXTRA_FLAGS+=("$1" "$2"); shift 2 ;;
+        *)
+            echo "Unknown flag: $1"; exit 1 ;;
+    esac
+done
 
 for DATASET in librispeech_clean librispeech_other tedlium; do
     echo "========================================"
@@ -21,14 +27,14 @@ for DATASET in librispeech_clean librispeech_other tedlium; do
     echo "========================================"
 
     # --- baseline (no adaptation) ---
-    uv run python run_experiment.py "${GPU_FLAG[@]}" \
+    uv run python run_experiment.py "${EXTRA_FLAGS[@]}" \
         --method base \
         --model "$MODEL" \
         --eval_dataset "$DATASET" \
         --tag exp1
 
     # --- TTL (no sample selection) ---
-    uv run python run_experiment.py "${GPU_FLAG[@]}" \
+    uv run python run_experiment.py "${EXTRA_FLAGS[@]}" \
         --method ttl \
         --model "$MODEL" \
         --adapt_dataset "$DATASET" \
@@ -38,7 +44,7 @@ for DATASET in librispeech_clean librispeech_other tedlium; do
         --tag exp1
 
     # --- TTL (with sample selection, P0 = e^3) ---
-    uv run python run_experiment.py "${GPU_FLAG[@]}" \
+    uv run python run_experiment.py "${EXTRA_FLAGS[@]}" \
         --method ttl \
         --model "$MODEL" \
         --adapt_dataset "$DATASET" \

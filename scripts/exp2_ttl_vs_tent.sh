@@ -5,29 +5,36 @@
 # Head-to-head comparison of adaptation methods on TEDLIUM
 # (domain-shifted TED talks where adaptation should help).
 #
-# Quick run:  add  --max_samples 100  to each command
+# Usage:  bash scripts/exp2_ttl_vs_tent.sh --gpu 0 --batch_size 32
 # =============================================================
 set -euo pipefail
 MODEL="openai/whisper-small"
 DATASET="tedlium"
-GPU_FLAG=()
-if [[ "${1:-}" == "--gpu" && -n "${2:-}" ]]; then
-    GPU_FLAG=(--gpu "$2")
-fi
+
+# Parse optional flags and forward them to run_experiment.py
+EXTRA_FLAGS=()
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --gpu|--batch_size)
+            EXTRA_FLAGS+=("$1" "$2"); shift 2 ;;
+        *)
+            echo "Unknown flag: $1"; exit 1 ;;
+    esac
+done
 
 echo "========================================"
 echo "  Dataset: $DATASET"
 echo "========================================"
 
 # --- baseline (no adaptation) ---
-uv run python run_experiment.py "${GPU_FLAG[@]}" \
+uv run python run_experiment.py "${EXTRA_FLAGS[@]}" \
     --method base \
     --model "$MODEL" \
     --eval_dataset "$DATASET" \
     --tag exp2
 
 # --- Tent (entropy minimisation, LayerNorm params) ---
-uv run python run_experiment.py "${GPU_FLAG[@]}" \
+uv run python run_experiment.py "${EXTRA_FLAGS[@]}" \
     --method tent \
     --model "$MODEL" \
     --adapt_dataset "$DATASET" \
@@ -36,7 +43,7 @@ uv run python run_experiment.py "${GPU_FLAG[@]}" \
     --tag exp2
 
 # --- TTL (CE on pseudo-labels, LoRA, no sample selection) ---
-uv run python run_experiment.py "${GPU_FLAG[@]}" \
+uv run python run_experiment.py "${EXTRA_FLAGS[@]}" \
     --method ttl \
     --model "$MODEL" \
     --adapt_dataset "$DATASET" \

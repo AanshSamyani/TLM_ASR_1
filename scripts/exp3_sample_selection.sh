@@ -6,22 +6,29 @@
 # sample-selection strategy actually helps.  Also includes
 # a run with NO selection for comparison.
 #
-# Quick run:  add  --max_samples 200
+# Usage:  bash scripts/exp3_sample_selection.sh --gpu 0 --batch_size 32
 # =============================================================
 set -euo pipefail
 MODEL="openai/whisper-small"
 DATASET="tedlium"          # domain-shifted dataset
-GPU_FLAG=()
-if [[ "${1:-}" == "--gpu" && -n "${2:-}" ]]; then
-    GPU_FLAG=(--gpu "$2")
-fi
+
+# Parse optional flags and forward them to run_experiment.py
+EXTRA_FLAGS=()
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --gpu|--batch_size)
+            EXTRA_FLAGS+=("$1" "$2"); shift 2 ;;
+        *)
+            echo "Unknown flag: $1"; exit 1 ;;
+    esac
+done
 
 echo "========================================"
 echo "  Sample-selection ablation on $DATASET"
 echo "========================================"
 
 # --- no selection (all samples, weight=1) ---
-uv run python run_experiment.py "${GPU_FLAG[@]}" \
+uv run python run_experiment.py "${EXTRA_FLAGS[@]}" \
     --method ttl \
     --model "$MODEL" \
     --adapt_dataset "$DATASET" \
@@ -34,7 +41,7 @@ uv run python run_experiment.py "${GPU_FLAG[@]}" \
 # e^2 ≈ 7.39,  e^3 ≈ 20.09,  e^4 ≈ 54.60,  e^5 ≈ 148.41
 for P0 in 7.39 20.09 54.60 148.41; do
     echo "--- P0 = $P0 ---"
-    uv run python run_experiment.py "${GPU_FLAG[@]}" \
+    uv run python run_experiment.py "${EXTRA_FLAGS[@]}" \
         --method ttl \
         --model "$MODEL" \
         --adapt_dataset "$DATASET" \
