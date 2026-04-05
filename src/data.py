@@ -19,7 +19,7 @@ DATASET_CONFIGS = {
         "text_key": "text",
     },
     "tedlium": {
-        "path": "LIUM/tedlium",
+        "path": "distil-whisper/tedlium",
         "name": "release3",
         "split": "test",
         "text_key": "text",
