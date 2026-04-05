@@ -23,7 +23,14 @@ import argparse
 import json
 import math
 import os
+import sys
 import time
+
+# Set CUDA_VISIBLE_DEVICES before importing torch so only the chosen GPU is visible.
+for _i, _arg in enumerate(sys.argv):
+    if _arg == "--gpu" and _i + 1 < len(sys.argv):
+        os.environ["CUDA_VISIBLE_DEVICES"] = sys.argv[_i + 1]
+        break
 
 import torch
 
@@ -100,6 +107,11 @@ def parse_args():
     p.add_argument("--output_dir", default="results")
     p.add_argument("--tag", default="", help="Optional tag appended to result filename.")
     p.add_argument("--fp16", action="store_true", help="Use float16 for inference.")
+    p.add_argument(
+        "--gpu",
+        default=None,
+        help="GPU index to use (e.g. 0, 1, 2, 3). Sets CUDA_VISIBLE_DEVICES.",
+    )
 
     return p.parse_args()
 

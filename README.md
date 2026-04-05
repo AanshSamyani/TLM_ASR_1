@@ -129,6 +129,7 @@ Key flags:
 | `--sample_selection` | off | Enable perplexity-based sample selection |
 | `--p0` | e³ ≈ 20.09 | Perplexity threshold |
 | `--fp16` | off | Half-precision inference |
+| `--gpu` | all visible | GPU index to use (0, 1, 2, 3) |
 | `--tag` | "" | Appended to output filename |
 
 ## Datasets
