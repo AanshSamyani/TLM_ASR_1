@@ -33,7 +33,7 @@ def evaluate(model, processor, dataloader, device: str = "cuda", language: str =
         refs = batch["references"]
 
         generated_ids = model.generate(
-            input_features,
+            input_features=input_features,
             forced_decoder_ids=forced_decoder_ids,
             max_new_tokens=225,
         )

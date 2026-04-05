@@ -43,7 +43,7 @@ class TTLAdapter:
     def _generate_pseudo_labels(self, input_features: torch.Tensor) -> torch.Tensor:
         self.model.eval()
         return self.model.generate(
-            input_features,
+            input_features=input_features,
             forced_decoder_ids=self.forced_decoder_ids,
             max_new_tokens=225,
         )
