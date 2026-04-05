@@ -42,9 +42,10 @@ uv run python run_experiment.py "${EXTRA_FLAGS[@]}" \
     --tent_lr 1e-3 \
     --tag exp2
 
-# --- TTL (CE on pseudo-labels, LoRA, no sample selection) ---
+# --- TTL (entropy minimisation through LoRA, no sample selection) ---
 uv run python run_experiment.py "${EXTRA_FLAGS[@]}" \
     --method ttl \
+    --ppl_method entropy \
     --model "$MODEL" \
     --adapt_dataset "$DATASET" \
     --eval_dataset "$DATASET" \

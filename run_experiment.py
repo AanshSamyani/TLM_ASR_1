@@ -89,6 +89,14 @@ def parse_args():
     p.add_argument("--lr", type=float, default=5e-5, help="Learning rate.")
     p.add_argument("--adapt_epochs", type=int, default=1)
 
+    # TTL perplexity method
+    p.add_argument(
+        "--ppl_method",
+        choices=["ce", "entropy", "gen"],
+        default="entropy",
+        help="TTL loss/perplexity mode: ce, entropy (recommended), or gen.",
+    )
+
     # sample selection
     p.add_argument("--sample_selection", action="store_true")
     p.add_argument("--lambda_val", type=float, default=0.10)
@@ -153,6 +161,7 @@ def main():
             model, processor, lr=args.lr,
             sample_selector=selector, device=device,
             language=args.language,
+            ppl_method=args.ppl_method,
         )
         adapt_ds, _ = load_asr_dataset(args.adapt_dataset, args.max_samples)
         # Sample selection requires per-sample perplexity, so force batch_size=1
@@ -160,7 +169,7 @@ def main():
         if args.sample_selection and args.batch_size > 1:
             print("Note: sample selection requires batch_size=1 for adaptation")
         adapt_loader = create_dataloader(adapt_ds, processor, batch_size=adapt_bs)
-        print(f"\nAdapting with TTL on {args.adapt_dataset} …")
+        print(f"\nAdapting with TTL ({args.ppl_method}) on {args.adapt_dataset} …")
         adapt_stats = adapter.adapt(adapt_loader, n_epochs=args.adapt_epochs)
 
     elif args.method == "tent":
@@ -214,6 +223,7 @@ def main():
         "config": {
             "lora_rank": args.lora_rank if args.method == "ttl" else None,
             "lora_alpha": args.lora_alpha if args.method == "ttl" else None,
+            "ppl_method": args.ppl_method if args.method == "ttl" else None,
             "lr": args.lr if args.method == "ttl" else args.tent_lr,
             "sample_selection": args.sample_selection,
             "p0": args.p0,
@@ -245,9 +255,10 @@ def main():
         }
 
     tag = f"_{args.tag}" if args.tag else ""
+    ppl_tag = f"_{args.ppl_method}" if args.method == "ttl" else ""
     sel_tag = "_sel" if args.sample_selection else ""
     p0_tag = f"_p0{args.p0:.1f}" if args.p0 and args.sample_selection else ""
-    fname = f"{args.method}_{args.eval_dataset}{sel_tag}{p0_tag}{tag}.json"
+    fname = f"{args.method}_{args.eval_dataset}{ppl_tag}{sel_tag}{p0_tag}{tag}.json"
     out_path = os.path.join(args.output_dir, fname)
     with open(out_path, "w") as f:
         json.dump(result, f, indent=2)

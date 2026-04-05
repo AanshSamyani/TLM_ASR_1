@@ -33,9 +33,10 @@ for DATASET in librispeech_clean librispeech_other tedlium; do
         --eval_dataset "$DATASET" \
         --tag exp1
 
-    # --- TTL (no sample selection) ---
+    # --- TTL (entropy, no sample selection) ---
     uv run python run_experiment.py "${EXTRA_FLAGS[@]}" \
         --method ttl \
+        --ppl_method entropy \
         --model "$MODEL" \
         --adapt_dataset "$DATASET" \
         --eval_dataset "$DATASET" \
@@ -43,9 +44,10 @@ for DATASET in librispeech_clean librispeech_other tedlium; do
         --lr 5e-5 \
         --tag exp1
 
-    # --- TTL (with sample selection, P0 = e^3) ---
+    # --- TTL (entropy, with sample selection) ---
     uv run python run_experiment.py "${EXTRA_FLAGS[@]}" \
         --method ttl \
+        --ppl_method entropy \
         --model "$MODEL" \
         --adapt_dataset "$DATASET" \
         --eval_dataset "$DATASET" \
