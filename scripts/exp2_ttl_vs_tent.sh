@@ -2,8 +2,9 @@
 # =============================================================
 # Experiment 2: TTL vs Tent vs Base
 #
-# Head-to-head comparison of adaptation methods on TEDLIUM
-# (domain-shifted TED talks where adaptation should help).
+# Head-to-head comparison of adaptation methods on TEDLIUM.
+# Includes a learning rate sweep for TTL since entropy
+# minimisation needs higher LR than the TLM paper's 5e-5.
 #
 # Usage:  bash scripts/exp2_ttl_vs_tent.sh --gpu 0 --batch_size 32
 # =============================================================
@@ -33,7 +34,7 @@ uv run python run_experiment.py "${EXTRA_FLAGS[@]}" \
     --eval_dataset "$DATASET" \
     --tag exp2
 
-# --- Tent (entropy minimisation, LayerNorm params) ---
+# --- Tent (entropy minimisation, LayerNorm params, lr=1e-3) ---
 uv run python run_experiment.py "${EXTRA_FLAGS[@]}" \
     --method tent \
     --model "$MODEL" \
@@ -42,7 +43,24 @@ uv run python run_experiment.py "${EXTRA_FLAGS[@]}" \
     --tent_lr 1e-3 \
     --tag exp2
 
-# --- TTL (entropy minimisation through LoRA, no sample selection) ---
+# --- TTL entropy — learning rate sweep ---
+# Tent uses lr=1e-3; the old TTL default (5e-5) is too low for entropy loss.
+for LR in 1e-4 5e-4 1e-3; do
+    echo "--- TTL entropy, lr=$LR ---"
+    uv run python run_experiment.py "${EXTRA_FLAGS[@]}" \
+        --method ttl \
+        --ppl_method entropy \
+        --model "$MODEL" \
+        --adapt_dataset "$DATASET" \
+        --eval_dataset "$DATASET" \
+        --lora_rank 8 \
+        --lr "$LR" \
+        --tag "exp2_lr${LR}"
+done
+
+# --- TTL entropy with expanded LoRA targets (attn + FF layers) ---
+# More LoRA targets = more capacity to reduce entropy
+echo "--- TTL entropy, lr=5e-4, expanded LoRA targets ---"
 uv run python run_experiment.py "${EXTRA_FLAGS[@]}" \
     --method ttl \
     --ppl_method entropy \
@@ -50,8 +68,9 @@ uv run python run_experiment.py "${EXTRA_FLAGS[@]}" \
     --adapt_dataset "$DATASET" \
     --eval_dataset "$DATASET" \
     --lora_rank 8 \
-    --lr 5e-5 \
-    --tag exp2
+    --lr 5e-4 \
+    --lora_targets q_proj v_proj k_proj out_proj fc1 fc2 \
+    --tag exp2_expanded
 
 echo ""
 echo "Experiment 2 finished.  Results in results/"
