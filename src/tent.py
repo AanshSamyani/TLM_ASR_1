@@ -82,7 +82,10 @@ class TentAdapter:
                 # Teacher-forced forward — need decoder_input_ids
                 decoder_input_ids = pseudo_labels[:, :-1]  # drop eos
 
-                self.model.train()
+                # Keep model in eval mode (no dropout) per the Tent paper.
+                # Gradients still flow through LayerNorm params since
+                # requires_grad=True was set by get_layernorm_params().
+                self.model.eval()
                 outputs = self.model(
                     input_features=input_features,
                     decoder_input_ids=decoder_input_ids,
