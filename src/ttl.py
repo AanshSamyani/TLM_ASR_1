@@ -54,7 +54,10 @@ class TTLAdapter:
         # labels = pseudo_labels without the leading decoder_start_token_id;
         # the model's forward() prepends it internally via shift_tokens_right.
         labels = pseudo_labels[:, 1:].clone()
-        outputs = self.model(input_features=input_features, labels=labels)
+        # Call through base_model to bypass PeftModelForSeq2SeqLM.forward()
+        # which injects input_ids that Whisper doesn't accept.
+        # LoRA layers remain active as they're injected into the model weights.
+        outputs = self.model.base_model(input_features=input_features, labels=labels)
         loss = outputs.loss
         ppl = math.exp(min(loss.item(), 100))  # clamp to avoid overflow
         return loss, ppl
