@@ -10,6 +10,10 @@
 # =============================================================
 set -euo pipefail
 MODEL="openai/whisper-small"
+GPU_FLAG=()
+if [[ "${1:-}" == "--gpu" && -n "${2:-}" ]]; then
+    GPU_FLAG=(--gpu "$2")
+fi
 
 for DATASET in librispeech_clean librispeech_other tedlium; do
     echo "========================================"
@@ -17,14 +21,14 @@ for DATASET in librispeech_clean librispeech_other tedlium; do
     echo "========================================"
 
     # --- baseline (no adaptation) ---
-    uv run python run_experiment.py \
+    uv run python run_experiment.py "${GPU_FLAG[@]}" \
         --method base \
         --model "$MODEL" \
         --eval_dataset "$DATASET" \
         --tag exp1
 
     # --- TTL (no sample selection) ---
-    uv run python run_experiment.py \
+    uv run python run_experiment.py "${GPU_FLAG[@]}" \
         --method ttl \
         --model "$MODEL" \
         --adapt_dataset "$DATASET" \
@@ -34,7 +38,7 @@ for DATASET in librispeech_clean librispeech_other tedlium; do
         --tag exp1
 
     # --- TTL (with sample selection, P0 = e^3) ---
-    uv run python run_experiment.py \
+    uv run python run_experiment.py "${GPU_FLAG[@]}" \
         --method ttl \
         --model "$MODEL" \
         --adapt_dataset "$DATASET" \
