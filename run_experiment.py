@@ -106,6 +106,7 @@ def parse_args():
     p.add_argument("--seed", type=int, default=42)
     p.add_argument("--output_dir", default="results")
     p.add_argument("--tag", default="", help="Optional tag appended to result filename.")
+    p.add_argument("--batch_size", type=int, default=16, help="Batch size for adapt/eval.")
     p.add_argument("--fp16", action="store_true", help="Use float16 for inference.")
     p.add_argument(
         "--gpu",
@@ -154,7 +155,11 @@ def main():
             language=args.language,
         )
         adapt_ds, _ = load_asr_dataset(args.adapt_dataset, args.max_samples)
-        adapt_loader = create_dataloader(adapt_ds, processor, batch_size=1)
+        # Sample selection requires per-sample perplexity, so force batch_size=1
+        adapt_bs = 1 if args.sample_selection else args.batch_size
+        if args.sample_selection and args.batch_size > 1:
+            print("Note: sample selection requires batch_size=1 for adaptation")
+        adapt_loader = create_dataloader(adapt_ds, processor, batch_size=adapt_bs)
         print(f"\nAdapting with TTL on {args.adapt_dataset} …")
         adapt_stats = adapter.adapt(adapt_loader, n_epochs=args.adapt_epochs)
 
@@ -166,8 +171,8 @@ def main():
             language=args.language,
         )
         adapt_ds, _ = load_asr_dataset(args.adapt_dataset, args.max_samples)
-        adapt_loader = create_dataloader(adapt_ds, processor, batch_size=1)
-        print(f"\nAdapting with Tent on {args.adapt_dataset} …")
+        adapt_loader = create_dataloader(adapt_ds, processor, batch_size=args.batch_size)
+        print(f"\nAdapting with Tent on {args.adapt_dataset} ��")
         adapt_stats = adapter.adapt(adapt_loader, n_epochs=args.adapt_epochs)
 
     adapt_time = time.time() - t0
@@ -175,7 +180,7 @@ def main():
     # ------------------------------------------------------------------ eval
     max_eval = args.max_eval_samples or args.max_samples
     eval_ds, _ = load_asr_dataset(args.eval_dataset, max_eval)
-    eval_loader = create_dataloader(eval_ds, processor, batch_size=1)
+    eval_loader = create_dataloader(eval_ds, processor, batch_size=args.batch_size)
 
     print(f"\nEvaluating on {args.eval_dataset} …")
     t1 = time.time()
