@@ -14,6 +14,14 @@ python run_experiment.py --method ttl --adapt_dataset tedlium \
 python run_experiment.py --method tent --adapt_dataset tedlium \
     --eval_dataset tedlium
 
+# SUTA baseline (per-utterance adaptation)
+python run_experiment.py --method suta --eval_dataset tedlium \
+    --suta_steps 10 --suta_alpha 0.5
+
+# Noisy evaluation (LibriSpeech-C style)
+python run_experiment.py --method ttl --adapt_dataset librispeech_other \
+    --eval_dataset librispeech_other --noise_type gaussian --noise_snr 10
+
 # Quick smoke test (50 samples)
 python run_experiment.py --method ttl --adapt_dataset librispeech_other \
     --eval_dataset librispeech_other --max_samples 50
@@ -39,6 +47,7 @@ from src.data import load_asr_dataset, create_dataloader
 from src.eval_utils import evaluate
 from src.ttl import TTLAdapter
 from src.tent import TentAdapter
+from src.suta import SutaAdapter
 from src.sample_selection import SampleSelector
 
 
@@ -48,7 +57,7 @@ def parse_args():
     # method
     p.add_argument(
         "--method",
-        choices=["base", "ttl", "tent"],
+        choices=["base", "ttl", "tent", "suta"],
         required=True,
         help="Adaptation method (base = no adaptation).",
     )
@@ -65,17 +74,26 @@ def parse_args():
     p.add_argument(
         "--adapt_dataset",
         default=None,
-        choices=["librispeech_clean", "librispeech_other", "tedlium"],
+        choices=["librispeech_clean", "librispeech_other", "tedlium", "common_voice_en"],
         help="Dataset to adapt on (required for ttl/tent).",
     )
     p.add_argument(
         "--eval_dataset",
         required=True,
-        choices=["librispeech_clean", "librispeech_other", "tedlium"],
+        choices=["librispeech_clean", "librispeech_other", "tedlium", "common_voice_en"],
         help="Dataset to evaluate on.",
     )
     p.add_argument("--max_samples", type=int, default=None, help="Cap samples (for quick runs).")
     p.add_argument("--max_eval_samples", type=int, default=None, help="Cap eval samples.")
+
+    # noise injection (LibriSpeech-C)
+    p.add_argument(
+        "--noise_type",
+        choices=["none", "gaussian", "babble"],
+        default="none",
+        help="Noise type for on-the-fly audio corruption.",
+    )
+    p.add_argument("--noise_snr", type=float, default=10.0, help="SNR in dB for noise injection.")
 
     # TTL / LoRA
     p.add_argument("--lora_rank", type=int, default=8)
@@ -85,6 +103,12 @@ def parse_args():
         nargs="+",
         default=["q_proj", "v_proj"],
         help="Module names to apply LoRA to.",
+    )
+    p.add_argument(
+        "--lora_placement",
+        choices=["both", "encoder", "decoder"],
+        default="both",
+        help="Apply LoRA to encoder, decoder, or both.",
     )
     p.add_argument("--lr", type=float, default=5e-5, help="Learning rate.")
     p.add_argument("--adapt_epochs", type=int, default=1)
@@ -109,6 +133,13 @@ def parse_args():
 
     # Tent-specific
     p.add_argument("--tent_lr", type=float, default=1e-3, help="LR for Tent.")
+
+    # SUTA-specific
+    p.add_argument("--suta_lr", type=float, default=1e-3, help="LR for SUTA.")
+    p.add_argument("--suta_steps", type=int, default=10, help="Gradient steps per utterance.")
+    p.add_argument("--suta_alpha", type=float, default=0.5,
+                    help="Entropy weight (1-alpha for MCC). Set to 1.0 for entropy-only.")
+    p.add_argument("--suta_temperature", type=float, default=2.0, help="Logit temperature.")
 
     # misc
     p.add_argument("--seed", type=int, default=42)
@@ -144,6 +175,7 @@ def main():
     # ------------------------------------------------------------------ adapt
     adapt_stats = None
     t0 = time.time()
+    suta_wer = None  # SUTA evaluates inline
 
     if args.method == "ttl":
         model = apply_lora(
@@ -151,6 +183,7 @@ def main():
             rank=args.lora_rank,
             alpha=args.lora_alpha,
             target_modules=args.lora_targets,
+            placement=args.lora_placement,
         )
         selector = (
             SampleSelector(args.lambda_val, args.p0)
@@ -168,7 +201,10 @@ def main():
         adapt_bs = 1 if args.sample_selection else args.batch_size
         if args.sample_selection and args.batch_size > 1:
             print("Note: sample selection requires batch_size=1 for adaptation")
-        adapt_loader = create_dataloader(adapt_ds, processor, batch_size=adapt_bs)
+        adapt_loader = create_dataloader(
+            adapt_ds, processor, batch_size=adapt_bs,
+            noise_type=args.noise_type, snr_db=args.noise_snr,
+        )
         print(f"\nAdapting with TTL ({args.ppl_method}) on {args.adapt_dataset} …")
         adapt_stats = adapter.adapt(adapt_loader, n_epochs=args.adapt_epochs)
 
@@ -180,29 +216,62 @@ def main():
             language=args.language,
         )
         adapt_ds, _ = load_asr_dataset(args.adapt_dataset, args.max_samples)
-        adapt_loader = create_dataloader(adapt_ds, processor, batch_size=args.batch_size)
-        print(f"\nAdapting with Tent on {args.adapt_dataset} ��")
+        adapt_loader = create_dataloader(
+            adapt_ds, processor, batch_size=args.batch_size,
+            noise_type=args.noise_type, snr_db=args.noise_snr,
+        )
+        print(f"\nAdapting with Tent on {args.adapt_dataset} …")
         adapt_stats = adapter.adapt(adapt_loader, n_epochs=args.adapt_epochs)
+
+    elif args.method == "suta":
+        ln_params = get_layernorm_params(model)
+        adapter = SutaAdapter(
+            model, processor, lr=args.suta_lr,
+            ln_params=ln_params, device=device,
+            language=args.language,
+            suta_steps=args.suta_steps,
+            suta_alpha=args.suta_alpha,
+            temperature=args.suta_temperature,
+        )
+        max_eval = args.max_eval_samples or args.max_samples
+        eval_ds, _ = load_asr_dataset(args.eval_dataset, max_eval)
+        # SUTA is per-utterance: batch_size=1
+        eval_loader = create_dataloader(
+            eval_ds, processor, batch_size=1,
+            noise_type=args.noise_type, snr_db=args.noise_snr,
+        )
+        print(f"\nAdapting+evaluating with SUTA on {args.eval_dataset} "
+              f"(steps={args.suta_steps}, alpha={args.suta_alpha}) …")
+        suta_wer, preds, refs, adapt_stats = adapter.adapt_and_evaluate(eval_loader)
 
     adapt_time = time.time() - t0
 
     # ------------------------------------------------------------------ eval
-    max_eval = args.max_eval_samples or args.max_samples
-    eval_ds, _ = load_asr_dataset(args.eval_dataset, max_eval)
-    eval_loader = create_dataloader(eval_ds, processor, batch_size=args.batch_size)
-
-    print(f"\nEvaluating on {args.eval_dataset} …")
-    t1 = time.time()
-    word_error_rate, preds, refs = evaluate(
-        model, processor, eval_loader, device, language=args.language,
-    )
-    eval_time = time.time() - t1
+    if args.method == "suta":
+        # SUTA already evaluated inline
+        word_error_rate = suta_wer
+        eval_time = 0.0
+    else:
+        max_eval = args.max_eval_samples or args.max_samples
+        eval_ds, _ = load_asr_dataset(args.eval_dataset, max_eval)
+        eval_loader = create_dataloader(
+            eval_ds, processor, batch_size=args.batch_size,
+            noise_type=args.noise_type, snr_db=args.noise_snr,
+        )
+        print(f"\nEvaluating on {args.eval_dataset} …")
+        t1 = time.time()
+        word_error_rate, preds, refs = evaluate(
+            model, processor, eval_loader, device, language=args.language,
+        )
+        eval_time = time.time() - t1
 
     print(f"\n{'='*50}")
     print(f"Method:  {args.method}")
     print(f"Model:   {args.model}")
-    print(f"Adapt:   {args.adapt_dataset or 'n/a'}")
+    print(f"Adapt:   {args.adapt_dataset or args.eval_dataset}")
     print(f"Eval:    {args.eval_dataset}")
+    if args.noise_type != "none":
+        print(f"Noise:   {args.noise_type} @ {args.noise_snr} dB SNR")
     print(f"WER:     {word_error_rate:.4f}  ({word_error_rate*100:.2f}%)")
     if adapt_stats:
         print(f"Adapted: {adapt_stats['adapted_samples']}/{adapt_stats['total_samples']} samples")
@@ -217,20 +286,29 @@ def main():
     result = {
         "method": args.method,
         "model": args.model,
-        "adapt_dataset": args.adapt_dataset,
+        "adapt_dataset": args.adapt_dataset or args.eval_dataset,
         "eval_dataset": args.eval_dataset,
         "wer": word_error_rate,
+        "noise_type": args.noise_type,
+        "noise_snr": args.noise_snr if args.noise_type != "none" else None,
         "config": {
             "lora_rank": args.lora_rank if args.method == "ttl" else None,
             "lora_alpha": args.lora_alpha if args.method == "ttl" else None,
+            "lora_placement": args.lora_placement if args.method == "ttl" else None,
             "ppl_method": args.ppl_method if args.method == "ttl" else None,
-            "lr": args.lr if args.method == "ttl" else args.tent_lr,
+            "lr": (
+                args.lr if args.method == "ttl"
+                else args.suta_lr if args.method == "suta"
+                else args.tent_lr
+            ),
             "sample_selection": args.sample_selection,
             "p0": args.p0,
             "lambda_val": args.lambda_val,
             "adapt_epochs": args.adapt_epochs,
             "max_samples": args.max_samples,
             "seed": args.seed,
+            "suta_steps": args.suta_steps if args.method == "suta" else None,
+            "suta_alpha": args.suta_alpha if args.method == "suta" else None,
         },
         "timing": {
             "adapt_seconds": round(adapt_time, 1),
@@ -253,12 +331,23 @@ def main():
                 else None
             ),
         }
+        # Save raw entropies for histogram analysis (TTL only)
+        raw_ent = adapt_stats.get("raw_entropies", [])
+        if raw_ent:
+            result["adaptation_stats"]["raw_entropies"] = [round(e, 4) for e in raw_ent]
 
     tag = f"_{args.tag}" if args.tag else ""
     ppl_tag = f"_{args.ppl_method}" if args.method == "ttl" else ""
     sel_tag = "_sel" if args.sample_selection else ""
     p0_tag = f"_p0{args.p0:.1f}" if args.p0 and args.sample_selection else ""
-    fname = f"{args.method}_{args.eval_dataset}{ppl_tag}{sel_tag}{p0_tag}{tag}.json"
+    noise_tag = f"_{args.noise_type}_snr{int(args.noise_snr)}" if args.noise_type != "none" else ""
+    placement_tag = f"_{args.lora_placement}" if args.method == "ttl" and args.lora_placement != "both" else ""
+    model_short = args.model.split("/")[-1]
+    model_tag = f"_{model_short}" if model_short != "whisper-small" else ""
+    fname = (
+        f"{args.method}_{args.eval_dataset}{ppl_tag}{sel_tag}{p0_tag}"
+        f"{noise_tag}{placement_tag}{model_tag}{tag}.json"
+    )
     out_path = os.path.join(args.output_dir, fname)
     with open(out_path, "w") as f:
         json.dump(result, f, indent=2)

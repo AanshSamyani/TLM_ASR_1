@@ -146,6 +146,7 @@ class TTLAdapter:
             "skipped_samples": 0,
             "perplexities": [],
             "losses": [],
+            "raw_entropies": [],
         }
 
         for epoch in range(n_epochs):
@@ -175,6 +176,8 @@ class TTLAdapter:
                     raise ValueError(f"Unknown ppl_method: {self.ppl_method}")
 
                 stats["perplexities"].append(ppl)
+                if self.ppl_method in ("entropy", "gen"):
+                    stats["raw_entropies"].append(loss.item())
 
                 # Step 3 — sample selection
                 if self.sample_selector is not None:

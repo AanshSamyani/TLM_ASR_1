@@ -19,11 +19,17 @@ def apply_lora(
     alpha: int = 16,
     target_modules: list = None,
     dropout: float = 0.0,
+    placement: str = "both",
 ):
     """Wrap a Whisper model with LoRA adapters.
 
     By default targets the query and value projections in all attention
     layers (encoder + decoder).  Returns the PeftModel wrapper.
+
+    Args:
+        placement: "both" (default), "encoder", or "decoder".
+            When not "both", LoRA is applied everywhere but the
+            non-target side's LoRA params are frozen.
     """
     if target_modules is None:
         target_modules = ["q_proj", "v_proj"]
@@ -37,6 +43,17 @@ def apply_lora(
         task_type=TaskType.SEQ_2_SEQ_LM,
     )
     model = get_peft_model(model, config)
+
+    # Freeze LoRA params on the non-target side
+    if placement == "encoder":
+        for name, param in model.named_parameters():
+            if param.requires_grad and "decoder" in name:
+                param.requires_grad = False
+    elif placement == "decoder":
+        for name, param in model.named_parameters():
+            if param.requires_grad and "encoder" in name:
+                param.requires_grad = False
+
     model.print_trainable_parameters()
     return model
 

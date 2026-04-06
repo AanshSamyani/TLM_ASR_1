@@ -1,7 +1,10 @@
 """Dataset loading and batching utilities for ASR experiments."""
 
+import numpy as np
 from datasets import load_dataset, Audio
 from torch.utils.data import DataLoader
+
+from src.noise import add_gaussian_noise, add_babble_noise
 
 
 # Each entry maps a short name to HuggingFace load_dataset arguments.
@@ -23,6 +26,12 @@ DATASET_CONFIGS = {
         "name": "release3",
         "split": "test",
         "text_key": "text",
+    },
+    "common_voice_en": {
+        "path": "mozilla-foundation/common_voice_17_0",
+        "name": "en",
+        "split": "test",
+        "text_key": "sentence",
     },
 }
 
@@ -76,9 +85,41 @@ class WhisperCollator:
         }
 
 
-def create_dataloader(dataset, processor, batch_size: int = 1, shuffle: bool = False):
-    """Build a DataLoader that yields Whisper-ready batches."""
-    collator = WhisperCollator(processor)
+class NoisyWhisperCollator(WhisperCollator):
+    """Wraps WhisperCollator, injecting noise into audio before feature extraction."""
+
+    def __init__(self, processor, noise_type: str = "gaussian", snr_db: float = 10.0,
+                 dataset=None, n_babble: int = 3):
+        super().__init__(processor)
+        self.noise_type = noise_type
+        self.snr_db = snr_db
+        self.dataset = dataset  # needed for babble noise sources
+        self.n_babble = n_babble
+
+    def __call__(self, batch):
+        for item in batch:
+            audio = item["audio"]["array"]
+            if self.noise_type == "gaussian":
+                item["audio"]["array"] = add_gaussian_noise(audio, self.snr_db)
+            elif self.noise_type == "babble":
+                item["audio"]["array"] = add_babble_noise(
+                    audio, self.snr_db, self.dataset, self.n_babble,
+                )
+        return super().__call__(batch)
+
+
+def create_dataloader(dataset, processor, batch_size: int = 1, shuffle: bool = False,
+                      noise_type: str = "none", snr_db: float = 10.0):
+    """Build a DataLoader that yields Whisper-ready batches.
+
+    If *noise_type* is not "none", audio is corrupted on-the-fly.
+    """
+    if noise_type != "none":
+        collator = NoisyWhisperCollator(
+            processor, noise_type=noise_type, snr_db=snr_db, dataset=dataset,
+        )
+    else:
+        collator = WhisperCollator(processor)
     return DataLoader(
         dataset,
         batch_size=batch_size,
