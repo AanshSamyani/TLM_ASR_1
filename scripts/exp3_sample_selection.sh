@@ -14,7 +14,7 @@
 set -euo pipefail
 MODEL="openai/whisper-small"
 DATASET="tedlium"
-LR="5e-4"  # adjust based on exp2 results
+LR="1e-3"  # best from exp2 (13.78% WER)
 
 # Parse optional flags and forward them to run_experiment.py
 EXTRA_FLAGS=()
